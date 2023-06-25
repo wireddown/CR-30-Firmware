@@ -374,6 +374,19 @@ void PrintJobRecovery::resume() {
       #endif
     ));
 
+  #elif ENABLED(BELTPRINTER)
+
+    // Set E to 0 to support `POWER_LOSS_RETRACT_LEN` and `POWER_LOSS_PURGE_LEN`
+    gcode.process_subcommands_now_P(PSTR("G92.9 E0"));
+
+    // Home XY in case hotend moved during power loss
+    gcode.process_subcommands_now_P(PSTR(
+      "G28R0"                               // No raise during G28
+      #if IS_CARTESIAN && DISABLED(POWER_LOSS_RECOVER_ZHOME)
+        "XY"                                // Don't home Z on Cartesian unless overridden
+      #endif
+    ));
+
   #endif
 
   // Pretend that all axes are homed
@@ -491,14 +504,25 @@ void PrintJobRecovery::resume() {
   );
   gcode.process_subcommands_now(cmd);
 
-  // Move back to the saved Z
   dtostrf(info.current_position.z, 1, 3, str_1);
-  #if Z_HOME_DIR > 0 || ENABLED(POWER_LOSS_RECOVER_ZHOME)
-    sprintf_P(cmd, PSTR("G1 Z%s F200"), str_1);
-  #else
-    gcode.process_subcommands_now_P(PSTR("G1 Z0 F200"));
+
+  #if ENABLED(BELTPRINTER)
+
+    // Restore Z position with G92.9
     sprintf_P(cmd, PSTR("G92.9 Z%s"), str_1);
+
+  #else
+
+    // Move back to the saved Z
+    #if Z_HOME_DIR > 0 || ENABLED(POWER_LOSS_RECOVER_ZHOME)
+      sprintf_P(cmd, PSTR("G1 Z%s F200"), str_1);
+    #else
+      gcode.process_subcommands_now_P(PSTR("G1 Z0 F200"));
+      sprintf_P(cmd, PSTR("G92.9 Z%s"), str_1);
+    #endif
+
   #endif
+
   gcode.process_subcommands_now(cmd);
 
   // Restore the feedrate
